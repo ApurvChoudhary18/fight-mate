@@ -36,6 +36,17 @@ class Fighter extends Sprite {
         this.attackTime = attackTime;   // ms to perform his attack animation.
         this.attackCooldown = true; // Fighter can only attack when his cooldown is up.
         this.isTakingHit = false;   // Fighter is taking a hit from another fighter.
+
+        // ── Effects hook ──────────────────────────────────────────────────────
+        // Decoupled callback so EffectsManager can react to hits without
+        // Fighter needing to know anything about the effects system.
+        // Set from index.js after both Fighter and EffectsManager are created.
+        // Signature: (hitX, hitY, damage, direction) => void
+        this.onHitCallback = null;
+
+        // Callback fired when this fighter starts an attack swing.
+        // Signature: (tipX, tipY, direction) => void
+        this.onAttackCallback = null;
     }
 
     attack(enemyFighter) {
@@ -43,10 +54,36 @@ class Fighter extends Sprite {
             this.attackCooldown = false;
             setTimeout(() => { this.attackCooldown = true }, 1000)
             this.switchSprite('attack')
+
+            // ── Attack swing callback ─────────────────────────────────────────
+            // Fire when the swing starts so slash trail / puff appear immediately.
+            // Tip position: attackBox leading edge, mid-height of box.
+            if (this.onAttackCallback) {
+                // Determine which direction this fighter is swinging:
+                // positive offset means attack reaches to the RIGHT (+1), else LEFT (-1)
+                const direction = this.attackBox.offSet.x > 0 ? 1 : -1;
+                const tipX = this.attackBox.position.x + (direction > 0 ? this.attackBox.width : 0);
+                const tipY = this.attackBox.position.y + this.attackBox.height * 0.4;
+                this.onAttackCallback(tipX, tipY, direction);
+            }
+
             if (this.isHitting(enemyFighter)) {
-                enemyFighter.health -= 20;
+                const damage = 20;
+                enemyFighter.health -= damage;
                 enemyFighter.switchSprite('takehit');
                 enemyFighter.isTakingHit = true;
+
+                // ── Hit landed callback ───────────────────────────────────────
+                // Compute world-space hit point: overlap centre between the two boxes.
+                if (this.onHitCallback) {
+                    const direction = this.attackBox.offSet.x > 0 ? 1 : -1;
+                    // Hit point is the near edge of the enemy's body at chest height
+                    const hitX = direction > 0
+                        ? enemyFighter.position.x + enemyFighter.width * 0.2
+                        : enemyFighter.position.x + enemyFighter.width * 0.8;
+                    const hitY = enemyFighter.position.y + enemyFighter.height * 0.35;
+                    this.onHitCallback(hitX, hitY, damage, direction);
+                }
             }
         }
     }

@@ -1,112 +1,206 @@
+/* ============================================================
+   styles.css — Fighting Game Visual Polish
+   ============================================================
+   Design philosophy:
+     - The game canvas is the primary rendering surface for all
+       gameplay visuals (parallax, fighters, HUD, effects, letterbox).
+     - CSS handles only the page chrome: centering, background,
+       the result overlay, and a subtle canvas glow.
+     - No letterbox via CSS pseudo-elements — the letterbox is
+       drawn on-canvas so it participates in the render order.
+   ============================================================ */
+
+/* ── Fonts ──────────────────────────────────────────────────── */
 @font-face {
     font-family: 'silver';
     src: url(../assets/fonts/Silver.ttf);
+    font-display: swap;     /* Don't block render waiting for the font */
+}
+
+/* ── Reset / Base ────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html,
+body {
+    width: 100%;
+    height: 100%;
 }
 
 body {
-    box-sizing: border-box;
-    background-color: seashell
+    /* Deep space background so the canvas edge blends dramatically */
+    background: radial-gradient(ellipse at center, #1a0a2e 0%, #0a0412 60%, #000000 100%);
+    min-height: 100vh;
+
+    /* Improve font rendering across platforms */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
 }
 
+/* ── Page Layout ──────────────────────────────────────────────── */
 .container {
     position: relative;
     display: flex;
-    justify-content: center;
-    width: 100%;
-    padding-top: 50px;
-}
-
-.hud {
-    position: absolute;
-    top: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    width: 50%;
+    flex-direction: column;
     align-items: center;
+    justify-content: center;
+    min-height: 100vh;
     padding: 20px;
-    z-index: 999;
-}
-
-.healthLayout {
-    position: relative;
-    height: 30px;
-    width: 100%;
-}
-
-.remainingHealthbar {
-    background-color: #EF4444;
-    height: 30px;
-    width: 100%;
-}
-
-.totalHealthBar {
-    position: absolute;
-    background-color: #8B5CF6;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    display: flex;
-}
-
-.timer {
-    background-color: wheat;
-    font-family: 'silver';
-    font-size: 35px;
-    height: 50px;
-    width: 75px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-}
-
-.result {
-    position: absolute;
-    font-family: 'silver';
-    font-size: 100px;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    color: wheat;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    text-shadow: 1px 0 0 black, -1px 0 0 black, 0 1px 0 black, 0 -1px 0 black, 1px 1px black, -1px -1px 0 black, 1px -1px 0 black, -1px 1px 0 black;
 }
 
 .game {
     display: flex;
-    width: 100%;
     align-items: center;
     justify-content: center;
+    position: relative;
 }
 
+/* ── Canvas ───────────────────────────────────────────────────── */
 #gameWindow {
-    border: 2px solid black;
+    display: block;
+
+    /* Prevent any browser default border/outline */
+    border: none;
+    outline: none;
+
+    /* Crisp pixel rendering — important for sprite-based games.
+       'pixelated' preserves sharp edges when the canvas is scaled. */
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+
+    /*
+     * Multi-layer glow effect around the canvas:
+     *   Layer 1: tight inner purple glow (arena energy)
+     *   Layer 2: wider violet atmosphere
+     *   Layer 3: broad dark ambient bloom
+     * This makes the canvas feel like a glowing portal / stage.
+     */
+    box-shadow:
+        0  0  0  1px rgba(120, 60, 220, 0.4),
+        0  0 18px    rgba(100, 40, 200, 0.5),
+        0  0 45px    rgba( 80, 20, 160, 0.3),
+        0  0 90px    rgba( 60, 10, 120, 0.18),
+        0  4px 60px  rgba(  0,  0,   0, 0.7);
+
+    /* Smooth scaling on resize without blurring */
+    max-width: 100%;
 }
 
+/* Canvas vignette overlay using a pseudo-element.
+   Sits on top of the canvas frame (not affecting rendering order inside it). */
+.game::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 2px;
+    background: radial-gradient(
+        ellipse at center,
+        transparent 55%,
+        rgba(0, 0, 0, 0.45) 100%
+    );
+    pointer-events: none;   /* Clicks pass through to canvas */
+}
+
+/* ── Result Overlay ────────────────────────────────────────────── */
+/*
+ * Shown when the game ends (player wins, tie, time-out).
+ * Positioned absolutely over the full viewport so it covers the canvas.
+ */
+#result {
+    position: fixed;
+    inset: 0;
+    display: none;          /* Toggled to 'flex' by JS */
+    align-items: center;
+    justify-content: center;
+
+    font-family: 'silver', 'Arial Black', sans-serif;
+    font-size: clamp(50px, 8vw, 100px);
+    color: #f0e0ff;
+
+    /* Dramatic backdrop for legibility */
+    background: rgba(5, 2, 15, 0.72);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+
+    z-index: 1000;
+
+    /* Text glow matching the arena palette */
+    text-shadow:
+        0 0  8px rgba(180, 100, 255, 0.9),
+        0 0 20px rgba(140,  60, 220, 0.7),
+        0 0 45px rgba(100,  30, 180, 0.4),
+        2px  2px 0 rgba(0, 0, 0, 0.8),
+       -2px -2px 0 rgba(0, 0, 0, 0.8),
+        2px -2px 0 rgba(0, 0, 0, 0.8),
+       -2px  2px 0 rgba(0, 0, 0, 0.8);
+
+    /* Subtle entrance animation */
+    animation: resultFadeIn 0.4s ease-out both;
+}
+
+@keyframes resultFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.88);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* ── Key Mapping Reference (if present) ──────────────────────── */
+/*
+ * These classes were in the original CSS and are kept so any
+ * existing keymapping HTML still displays correctly.
+ */
 .keymapping {
     display: flex;
     justify-content: center;
-    font-family: 'silver';
-    font-size: 40px;
+    font-family: 'silver', Arial, sans-serif;
+    font-size: 32px;
+    color: #c0a8e0;
+    margin-top: 24px;
 }
 
 .keys {
-    margin: 30px;
-    padding: 40px;
-    border: 2px solid black;
+    margin: 20px;
+    padding: 30px 40px;
+    border: 1px solid rgba(140, 80, 220, 0.35);
+    border-radius: 8px;
+    background: rgba(20, 10, 40, 0.6);
+    backdrop-filter: blur(4px);
 }
 
 .keys h1 {
-    margin: 0px
+    margin: 0 0 8px;
+    font-size: 1em;
+    color: #e0d0ff;
 }
 
-@keyframes textclip {
-    to {
-        background-position: 200% center;
-    }
+/* ── Scrollbar (dark theme match) ────────────────────────────── */
+::-webkit-scrollbar {
+    width: 6px;
+}
+::-webkit-scrollbar-track {
+    background: #0a0412;
+}
+::-webkit-scrollbar-thumb {
+    background: #4a2080;
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #6a30b0;
+}
+
+/* ── Selection colour ─────────────────────────────────────────── */
+::selection {
+    background: rgba(120, 60, 200, 0.4);
+    color: #f0e0ff;
 }

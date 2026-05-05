@@ -6,24 +6,52 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="../css/styles.css">
-    <title>Fighting game</title>
+    <title>Fighting Game</title>
 </head>
 
 <body>
 
     <div class="container">
 
-        <div id="result" class="result"> result </div>
+        <!--
+            #result — winner announcement overlay.
+            Remains in HTML so it can be shown/hidden via JS (display: flex).
+        -->
+        <div id="result" class="result"></div>
+
+        <!--
+            .game — canvas wrapper.
+            The canvas itself is the entire game surface: parallax, fighters,
+            HUD, particles, and letterbox are ALL drawn on-canvas.
+            The CSS letterbox pseudo-elements are removed in favour of an
+            on-canvas draw (so it participates in the render order correctly).
+        -->
         <div class="game">
-            <canvas id="gameWindow"> </canvas>
+            <canvas id="gameWindow"></canvas>
         </div>
 
     </div>
 
+    <!--
+        GSAP is kept for potential future use (result text animations, etc).
+        Loaded before the module so it's available globally if needed.
+    -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.10.4/gsap.min.js"
         integrity="sha512-VEBjfxWUOyzl0bAwh4gdLEaQyDYPvLrZql3pw1ifgb6fhEvZl9iDDehwHZ+dsMzA0Jfww8Xt7COSZuJ/slxc4Q=="
         crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-    <script type="module" src="../js/index.js"> </script>
+
+    <!--
+        Single module entry point — all new systems (Camera, ParallaxSystem,
+        ParticleSystem, EffectsManager) are imported inside index.js via ES6
+        import statements.  No additional <script> tags needed because the
+        browser's module loader handles dependency resolution automatically.
+
+        Load order inside index.js:
+          Camera.js → ParallaxSystem.js → ParticleSystem.js → EffectsManager.js
+          → Fighter.js → Sprite.js → Keys.js
+    -->
+    <script type="module" src="../js/index.js"></script>
+
 </body>
 
 </html>
