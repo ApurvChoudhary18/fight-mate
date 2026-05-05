@@ -316,36 +316,36 @@ export class ParticleSystem {
      * @param {number} direction - +1 = hit going right, -1 = going left.
      */
     spawnHitSparks(x, y, direction = 1) {
-        // Main burst — many fast sparks in the impact direction
+        // Main burst — reduced count for performance
         this.emit({
             x, y,
-            count:    18,
-            speed:    260,
-            angle:    direction > 0 ? 0 : Math.PI, // Away from attacker
-            spread:   Math.PI * 0.75,
-            colors:   ['#ffffff', '#ffe080', '#ff9020', '#ffcc40', '#ff6010'],
-            lifetime: 0.35,
-            lifetimeVariance: 0.15,
-            size:     5,
-            sizeVariance: 3,
-            gravity:  200,
+            count:    8,
+            speed:    220,
+            angle:    direction > 0 ? 0 : Math.PI,
+            spread:   Math.PI * 0.6,
+            colors:   ['#ffffff', '#ffe080', '#ff9020'],
+            lifetime: 0.25,
+            lifetimeVariance: 0.1,
+            size:     4,
+            sizeVariance: 2,
+            gravity:  180,
             drift:    0,
             shape:    'spark',
         });
 
-        // Secondary ring — slower debris floating outward
+        // Secondary ring — fewer particles
         this.emit({
             x, y,
-            count:    10,
-            speed:    100,
+            count:    4,
+            speed:    80,
             spread:   Math.PI * 2,
-            colors:   ['#ff8020', '#ffaa40', '#ff6010'],
-            lifetime: 0.5,
-            lifetimeVariance: 0.2,
-            size:     3,
-            sizeVariance: 1.5,
-            gravity:  120,
-            drift:    10,
+            colors:   ['#ff8020', '#ffaa40'],
+            lifetime: 0.35,
+            lifetimeVariance: 0.15,
+            size:     2.5,
+            sizeVariance: 1,
+            gravity:  100,
+            drift:    5,
             shape:    'circle',
         });
     }
@@ -358,19 +358,20 @@ export class ParticleSystem {
      * @param {number} direction - +1 | -1
      */
     spawnAttackPuff(x, y, direction = 1) {
+        // Much fewer particles for performance
         this.emit({
             x, y,
-            count:    8,
-            speed:    90,
+            count:    3,
+            speed:    70,
             angle:    direction > 0 ? 0 : Math.PI,
-            spread:   Math.PI * 0.5,
-            colors:   ['rgba(200,180,255,0.5)', 'rgba(255,255,255,0.3)', 'rgba(180,160,255,0.4)'],
-            lifetime: 0.3,
-            lifetimeVariance: 0.1,
-            size:     6,
-            sizeVariance: 3,
-            gravity:  -30,
-            drift:    30,
+            spread:   Math.PI * 0.4,
+            colors:   ['rgba(200,180,255,0.4)', 'rgba(255,255,255,0.25)'],
+            lifetime: 0.2,
+            lifetimeVariance: 0.08,
+            size:     5,
+            sizeVariance: 2,
+            gravity:  -20,
+            drift:    20,
             shape:    'circle',
         });
     }

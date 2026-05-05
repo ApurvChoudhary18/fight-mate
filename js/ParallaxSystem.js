@@ -1,284 +1,323 @@
 /**
- * ParallaxSystem.js — Procedural Parallax Background Renderer
- *
- * WHY procedural instead of image-based:
- *   The project may not ship separate parallax assets, so we generate
- *   atmospheric depth layers with canvas gradients and geometry.
- *   This means the system works out of the box with zero extra files,
- *   while still looking good and providing true depth perception.
- *
- * Design decisions:
- *   - Each ParallaxLayer owns its scroll multiplier (0 = fixed sky,
- *     1 = moves 1:1 with camera).  Layers between 0 and 1 appear at
- *     different "depths" — classic parallax.
- *   - Seamless looping: we draw the layer at x AND x + tileWidth so
- *     there is never a visible seam when the camera scrolls.
- *   - ParallaxSystem draws back-to-front (painters algorithm) so each
- *     layer composites over the previous ones correctly.
- *   - No state lives outside classes — caller passes cameraX each frame.
+ * ParallaxSystem.js — Beautiful Background
+ * 
+ * Features:
+ * - Animated clouds that drift slowly
+ * - Multiple parallax layers for depth
+ * - Stunning sunset/dusk atmosphere
  */
 
-// ─── ParallaxLayer ────────────────────────────────────────────────────────────
+// Fixed dimensions
+const _canvasWidth = 1024;
+const _canvasHeight = 576;
 
-export class ParallaxLayer {
-    /**
-     * @param {object} config
-     * @param {number}   config.speedMultiplier  - 0–1. 0=sky, 1=ground-locked.
-     * @param {number}   config.width            - World width (same as canvas).
-     * @param {number}   config.height           - Canvas height.
-     * @param {Function} config.drawFn           - (ctx, x, y, w, h) → void.
-     *   Receives the current tile offset and dimensions; called twice for looping.
-     */
+// ─── Parallax Layer ────────────────────────────────────────────────────────
+class ParallaxLayer {
     constructor({ speedMultiplier = 0.2, width = 1024, height = 576, drawFn }) {
         this.speedMultiplier = speedMultiplier;
         this.width  = width;
         this.height = height;
         this.drawFn = drawFn;
-
-        // Current computed x offset (updated each frame via update())
         this.offsetX = 0;
     }
 
-    /**
-     * update() — recompute this layer's horizontal offset based on camera.
-     * @param {number} cameraX - Camera's world-space X position.
-     */
-    update(cameraX) {
-        // Multiply camera movement by the speed factor to create depth illusion.
-        // We modulo by width so the offset wraps cleanly for seamless looping.
-        this.offsetX = -(cameraX * this.speedMultiplier) % this.width;
+    update(cameraX, timeOffset = 0) {
+        this.offsetX = -(cameraX * this.speedMultiplier + timeOffset) % this.width;
     }
 
-    /**
-     * draw() — render this layer to the canvas.
-     * Draws the tile at offsetX AND offsetX + width to fill any gap at the edge.
-     *
-     * @param {CanvasRenderingContext2D} ctx
-     */
     draw(ctx) {
-        // Draw the primary tile
         this.drawFn(ctx, this.offsetX, 0, this.width, this.height);
-        // Draw the adjacent tile to prevent visible seam during scroll
         this.drawFn(ctx, this.offsetX + this.width, 0, this.width, this.height);
-        // Also draw on the left in case camera can scroll backwards
-        this.drawFn(ctx, this.offsetX - this.width, 0, this.width, this.height);
     }
 }
 
-// ─── Procedural Draw Functions ────────────────────────────────────────────────
+// ─── Layer Factories (Stunning Dusk/Sunset Theme) ─────────────────────
 
-/**
- * Factory functions that return a drawFn for each atmospheric depth layer.
- * They are pure functions — no side effects, no shared state.
- */
-
-/** Layer 0 — Deep sky gradient (fixed, speed = 0) */
-function createSkyLayer(canvasWidth, canvasHeight) {
-    return (ctx, x, y, w, h) => {
-        const grad = ctx.createLinearGradient(x, 0, x, canvasHeight);
-        grad.addColorStop(0,    '#0a0612');   // Near-black deep purple at zenith
-        grad.addColorStop(0.35, '#1a0a2e');   // Rich dark violet midpoint
-        grad.addColorStop(0.65, '#2d1b4e');   // Atmospheric purple at horizon
-        grad.addColorStop(1,    '#1a0a1e');   // Dark transition to ground level
+// Layer 1: Deep dusk sky with gradient
+function createSkyLayer(w, h) {
+    return (ctx, x, y, width, height) => {
+        const grad = ctx.createLinearGradient(x, 0, x, h);
+        grad.addColorStop(0, '#0D1B3E');      // Deep night blue
+        grad.addColorStop(0.3, '#1E3A5F');  // Navy
+        grad.addColorStop(0.5, '#4A2C5A');   // Purple dusk
+        grad.addColorStop(0.7, '#8B4557');  // Rose
+        grad.addColorStop(0.85, '#D4726A'); // Coral
+        grad.addColorStop(1, '#F5A962');    // Warm sunset
         ctx.fillStyle = grad;
-        ctx.fillRect(x, y, w, h);
-    };
-}
-
-/** Layer 1 — Distant mountains silhouette (speed = 0.05, very slow) */
-function createDistantMountainsLayer(canvasWidth, canvasHeight) {
-    return (ctx, x, y, w, h) => {
-        ctx.save();
-        ctx.globalAlpha = 0.6;
-
-        // Mountain gradient — dark blue-purple, lighter than sky so it reads
-        const grad = ctx.createLinearGradient(0, canvasHeight * 0.3, 0, canvasHeight * 0.75);
-        grad.addColorStop(0, '#1e1040');
-        grad.addColorStop(1, '#0d0820');
-
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.moveTo(x, h);
-
-        // Procedural mountain profile — deterministic via sin with prime offsets
-        // so it looks organic but never requires a random seed
-        const steps = 24;
-        const stepW  = w / steps;
-        for (let i = 0; i <= steps; i++) {
-            const px = x + i * stepW;
-            // Multiple sin harmonics layered for a natural silhouette
-            const py = h * 0.55
-                - Math.sin(i * 0.31 + 1.1) * h * 0.12
-                - Math.sin(i * 0.17 + 2.3) * h * 0.09
-                - Math.abs(Math.sin(i * 0.47 + 0.5)) * h * 0.07;
-            ctx.lineTo(px, py);
+        ctx.fillRect(x, y, width, height);
+        
+        // Stars in upper sky
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+        for (let i = 0; i < 50; i++) {
+            const sx = (x + i * 137) % width;
+            const sy = (i * 73) % (h * 0.35);
+            const sr = 0.8 + (i % 3) * 0.5;
+            ctx.beginPath();
+            ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+            ctx.fill();
         }
-        ctx.lineTo(x + w, h);
-        ctx.closePath();
-        ctx.fillStyle = grad;
-        ctx.fill();
-        ctx.restore();
     };
 }
 
-/** Layer 2 — Mid fog band (speed = 0.15) */
-function createFogLayer(canvasWidth, canvasHeight) {
-    return (ctx, x, y, w, h) => {
-        ctx.save();
-        const grad = ctx.createLinearGradient(0, h * 0.45, 0, h * 0.75);
-        grad.addColorStop(0,   'rgba(80, 40, 120, 0)');
-        grad.addColorStop(0.4, 'rgba(60, 30, 100, 0.18)');
-        grad.addColorStop(0.7, 'rgba(40, 20, 70,  0.22)');
-        grad.addColorStop(1,   'rgba(20, 10, 40,  0)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(x, 0, w, h);
-        ctx.restore();
-    };
-}
-
-/** Layer 3 — Near hills (speed = 0.25) */
-function createNearHillsLayer(canvasWidth, canvasHeight) {
-    return (ctx, x, y, w, h) => {
-        ctx.save();
-        const grad = ctx.createLinearGradient(0, h * 0.55, 0, h * 0.85);
-        grad.addColorStop(0, '#150b30');
-        grad.addColorStop(1, '#0a0618');
-
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.moveTo(x, h);
-
-        const steps = 18;
-        const stepW  = w / steps;
-        for (let i = 0; i <= steps; i++) {
-            const px = x + i * stepW;
-            const py = h * 0.72
-                - Math.sin(i * 0.41 + 0.7) * h * 0.10
-                - Math.abs(Math.sin(i * 0.29 + 1.9)) * h * 0.06;
-            ctx.lineTo(px, py);
-        }
-        ctx.lineTo(x + w, h);
-        ctx.closePath();
-        ctx.fill();
-        ctx.restore();
-    };
-}
-
-/** Layer 4 — Ground / arena floor gradient (speed = 0.4) */
-function createGroundLayer(canvasWidth, canvasHeight) {
-    return (ctx, x, y, w, h) => {
-        ctx.save();
-        const grad = ctx.createLinearGradient(0, h * 0.78, 0, h);
-        grad.addColorStop(0, '#1c0e3a');
-        grad.addColorStop(0.4, '#120830');
-        grad.addColorStop(1, '#080415');
-
-        ctx.fillStyle = grad;
-        ctx.fillRect(x, h * 0.78, w, h * 0.22);
-
-        // Subtle reflective sheen on the "floor" — adds a dojo/arena feel
-        const sheen = ctx.createLinearGradient(x, h * 0.78, x + w, h * 0.78);
-        sheen.addColorStop(0,    'rgba(120, 60, 200, 0)');
-        sheen.addColorStop(0.35, 'rgba(140, 70, 220, 0.07)');
-        sheen.addColorStop(0.65, 'rgba(120, 60, 200, 0.05)');
-        sheen.addColorStop(1,    'rgba(100, 50, 180, 0)');
-        ctx.fillStyle = sheen;
-        ctx.fillRect(x, h * 0.78, w, h * 0.04);
-
-        ctx.restore();
-    };
-}
-
-/** Layer 5 — Distant lanterns / glowing orbs (speed = 0.12) */
-function createLanternLayer(canvasWidth, canvasHeight) {
-    // Pre-define lantern positions deterministically (no Math.random — stable each frame)
-    const lanterns = [
-        { rx: 0.08, ry: 0.52, r: 6,  hue: '200, 120, 255' },
-        { rx: 0.22, ry: 0.48, r: 4,  hue: '255, 160, 80'  },
-        { rx: 0.37, ry: 0.55, r: 7,  hue: '150, 100, 255' },
-        { rx: 0.51, ry: 0.46, r: 5,  hue: '255, 180, 100' },
-        { rx: 0.65, ry: 0.50, r: 6,  hue: '180, 120, 255' },
-        { rx: 0.79, ry: 0.53, r: 4,  hue: '255, 140, 60'  },
-        { rx: 0.91, ry: 0.49, r: 5,  hue: '200, 100, 255' },
+// Layer 2: Distant clouds (subtle)
+function createFarCloudsLayer(w, h) {
+    const clouds = [
+        { x: 0.08, y: 0.15, rx: 70, ry: 25 },
+        { x: 0.28, y: 0.10, rx: 85, ry: 30 },
+        { x: 0.52, y: 0.14, rx: 60, ry: 22 },
+        { x: 0.75, y: 0.11, rx: 75, ry: 28 },
     ];
-
-    return (ctx, x, y, w, h) => {
-        ctx.save();
-        for (const l of lanterns) {
-            const lx = x + l.rx * w;
-            const ly = h * l.ry;
-
-            // Radial glow
-            const grd = ctx.createRadialGradient(lx, ly, 0, lx, ly, l.r * 5);
-            grd.addColorStop(0,   `rgba(${l.hue}, 0.45)`);
-            grd.addColorStop(0.4, `rgba(${l.hue}, 0.15)`);
-            grd.addColorStop(1,   `rgba(${l.hue}, 0)`);
-            ctx.fillStyle = grd;
+    
+    return (ctx, x, y, wdt, hgt) => {
+        ctx.fillStyle = 'rgba(180, 140, 180, 0.25)';
+        for (const cloud of clouds) {
+            const cx = x + cloud.x * wdt;
+            const cy = hgt * cloud.y;
             ctx.beginPath();
-            ctx.arc(lx, ly, l.r * 5, 0, Math.PI * 2);
-            ctx.fill();
-
-            // Core bright dot
-            ctx.fillStyle = `rgba(${l.hue}, 0.9)`;
-            ctx.beginPath();
-            ctx.arc(lx, ly, l.r * 0.5, 0, Math.PI * 2);
+            ctx.ellipse(cx, cy, cloud.rx, cloud.ry, 0, 0, Math.PI * 2);
             ctx.fill();
         }
-        ctx.restore();
     };
 }
 
-// ─── ParallaxSystem ───────────────────────────────────────────────────────────
+// Layer 3: Mid clouds with orange tint (sunset colors)
+function createMidCloudsLayer(w, h) {
+    const clouds = [
+        { x: 0.12, y: 0.22, rx: 80, ry: 30, color: 'rgba(255, 180, 140, 0.35)' },
+        { x: 0.38, y: 0.18, rx: 95, ry: 35, color: 'rgba(255, 165, 120, 0.3)' },
+        { x: 0.65, y: 0.25, rx: 70, ry: 26, color: 'rgba(255, 190, 150, 0.32)' },
+        { x: 0.88, y: 0.20, rx: 85, ry: 30, color: 'rgba(255, 175, 135, 0.28)' },
+    ];
+    
+    return (ctx, x, y, wdt, hgt) => {
+        for (const cloud of clouds) {
+            const cx = x + cloud.x * wdt;
+            const cy = hgt * cloud.y;
+            ctx.fillStyle = cloud.color;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, cloud.rx, cloud.ry, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    };
+}
+
+// Layer 4: Near clouds (warmer, brighter)
+function createNearCloudsLayer(w, h) {
+    const clouds = [
+        { x: 0.05, y: 0.30, rx: 90, ry: 35, color: 'rgba(255, 200, 160, 0.4)' },
+        { x: 0.32, y: 0.26, rx: 110, ry: 40, color: 'rgba(255, 190, 150, 0.35)' },
+        { x: 0.58, y: 0.32, rx: 85, ry: 32, color: 'rgba(255, 195, 155, 0.38)' },
+        { x: 0.82, y: 0.28, rx: 100, ry: 38, color: 'rgba(255, 185, 145, 0.32)' },
+    ];
+    
+    return (ctx, x, y, wdt, hgt) => {
+        for (const cloud of clouds) {
+            const cx = x + cloud.x * wdt;
+            const cy = hgt * cloud.y;
+            ctx.fillStyle = cloud.color;
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, cloud.rx, cloud.ry, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    };
+}
+
+// Layer 5: Distant mountains/silhouette
+function createMountainsLayer(w, h) {
+    return (ctx, x, y, wdt, hgt) => {
+        // Far mountains
+        ctx.fillStyle = 'rgba(30, 25, 50, 0.7)';
+        ctx.beginPath();
+        ctx.moveTo(x, hgt);
+        ctx.lineTo(x, hgt * 0.65);
+        ctx.lineTo(x + wdt * 0.08, hgt * 0.50);
+        ctx.lineTo(x + wdt * 0.18, hgt * 0.60);
+        ctx.lineTo(x + wdt * 0.30, hgt * 0.45);
+        ctx.lineTo(x + wdt * 0.42, hgt * 0.55);
+        ctx.lineTo(x + wdt * 0.55, hgt * 0.42);
+        ctx.lineTo(x + wdt * 0.65, hgt * 0.52);
+        ctx.lineTo(x + wdt * 0.78, hgt * 0.48);
+        ctx.lineTo(x + wdt * 0.88, hgt * 0.58);
+        ctx.lineTo(x + wdt, hgt * 0.50);
+        ctx.lineTo(x + wdt, hgt);
+        ctx.closePath();
+        ctx.fill();
+        
+        // Nearer mountain range
+        ctx.fillStyle = 'rgba(40, 35, 60, 0.6)';
+        ctx.beginPath();
+        ctx.moveTo(x, hgt);
+        ctx.lineTo(x, hgt * 0.72);
+        ctx.lineTo(x + wdt * 0.12, hgt * 0.58);
+        ctx.lineTo(x + wdt * 0.25, hgt * 0.68);
+        ctx.lineTo(x + wdt * 0.40, hgt * 0.52);
+        ctx.lineTo(x + wdt * 0.55, hgt * 0.62);
+        ctx.lineTo(x + wdt * 0.70, hgt * 0.48);
+        ctx.lineTo(x + wdt * 0.82, hgt * 0.58);
+        ctx.lineTo(x + wdt * 0.92, hgt * 0.52);
+        ctx.lineTo(x + wdt, hgt * 0.60);
+        ctx.lineTo(x + wdt, hgt);
+        ctx.closePath();
+        ctx.fill();
+    };
+}
+
+// Layer 6: Ground/arena floor
+function createGroundLayer(w, h) {
+    return (ctx, x, y, wdt, hgt) => {
+        const groundY = hgt - 100;
+        
+        // Dark ground base
+        ctx.fillStyle = '#1A1520';
+        ctx.fillRect(x, groundY, wdt, 100);
+        
+        // Arena floor lines (retro feel)
+        ctx.strokeStyle = 'rgba(255, 100, 80, 0.3)';
+        ctx.lineWidth = 2;
+        
+        // Horizontal lines
+        for (let i = 0; i < 5; i++) {
+            ctx.beginPath();
+            ctx.moveTo(x, groundY + 20 + i * 20);
+            ctx.lineTo(x + wdt, groundY + 20 + i * 20);
+            ctx.stroke();
+        }
+        
+        // Vertical lines
+        for (let i = 0; i < wdt; i += 80) {
+            ctx.beginPath();
+            ctx.moveTo(x + i, groundY);
+            ctx.lineTo(x + i, groundY + 100);
+            ctx.stroke();
+        }
+        
+        // Ground highlight edge
+        const edgeGrad = ctx.createLinearGradient(x, groundY, x, groundY + 15);
+        edgeGrad.addColorStop(0, 'rgba(255, 120, 80, 0.5)');
+        edgeGrad.addColorStop(1, 'rgba(255, 120, 80, 0)');
+        ctx.fillStyle = edgeGrad;
+        ctx.fillRect(x, groundY, wdt, 15);
+    };
+}
+
+// Layer 7: Glow overlay from sunset
+function createGlowLayer(w, h) {
+    return (ctx, x, y, wdt, hgt) => {
+        // Warm glow from bottom
+        const glow = ctx.createRadialGradient(
+            x + wdt * 0.7, hgt, 0,
+            x + wdt * 0.7, hgt, hgt * 1.2
+        );
+        glow.addColorStop(0, 'rgba(255, 150, 80, 0.15)');
+        glow.addColorStop(0.5, 'rgba(255, 100, 60, 0.05)');
+        glow.addColorStop(1, 'rgba(255, 80, 50, 0)');
+        ctx.fillStyle = glow;
+        ctx.fillRect(x, y, wdt, hgt);
+    };
+}
+
+// ─── ParallaxSystem ─────────────────────────────────────────────────
 
 export class ParallaxSystem {
-    /**
-     * @param {number} canvasWidth
-     * @param {number} canvasHeight
-     */
-    constructor(canvasWidth = 1024, canvasHeight = 576) {
+    constructor() {
         this.layers = [];
-        this._buildProcedualLayers(canvasWidth, canvasHeight);
+        this._w = _canvasWidth;
+        this._h = _canvasHeight;
+        this._time = 0;
+        this._init();
     }
 
-    /** Build all atmospheric depth layers. */
-    _buildProcedualLayers(w, h) {
-        // Layers are added back-to-front (lowest speedMultiplier drawn first)
-        this.addLayer({ speedMultiplier: 0,    width: w, height: h, drawFn: createSkyLayer(w, h) });
-        this.addLayer({ speedMultiplier: 0.05, width: w, height: h, drawFn: createDistantMountainsLayer(w, h) });
-        this.addLayer({ speedMultiplier: 0.12, width: w, height: h, drawFn: createLanternLayer(w, h) });
-        this.addLayer({ speedMultiplier: 0.15, width: w, height: h, drawFn: createFogLayer(w, h) });
-        this.addLayer({ speedMultiplier: 0.25, width: w, height: h, drawFn: createNearHillsLayer(w, h) });
-        this.addLayer({ speedMultiplier: 0.4,  width: w, height: h, drawFn: createGroundLayer(w, h) });
+    _init() {
+        // Layer 1 - Sky with stars (fixed)
+        this.layers.push({ 
+            layer: new ParallaxLayer({ 
+                speedMultiplier: 0, 
+                width: this._w, 
+                height: this._h, 
+                drawFn: createSkyLayer(this._w, this._h) 
+            }),
+            timeDrift: 0
+        });
+        
+        // Layer 2 - Far clouds
+        this.layers.push({ 
+            layer: new ParallaxLayer({ 
+                speedMultiplier: 0.008, 
+                width: this._w, 
+                height: this._h, 
+                drawFn: createFarCloudsLayer(this._w, this._h) 
+            }),
+            timeDrift: 0.05
+        });
+        
+        // Layer 3 - Mid sunset clouds
+        this.layers.push({ 
+            layer: new ParallaxLayer({ 
+                speedMultiplier: 0.02, 
+                width: this._w, 
+                height: this._h, 
+                drawFn: createMidCloudsLayer(this._w, this._h) 
+            }),
+            timeDrift: 0.12
+        });
+        
+        // Layer 4 - Near warm clouds
+        this.layers.push({ 
+            layer: new ParallaxLayer({ 
+                speedMultiplier: 0.035, 
+                width: this._w, 
+                height: this._h, 
+                drawFn: createNearCloudsLayer(this._w, this._h) 
+            }),
+            timeDrift: 0.18
+        });
+        
+        // Layer 5 - Mountains
+        this.layers.push({ 
+            layer: new ParallaxLayer({ 
+                speedMultiplier: 0.08, 
+                width: this._w, 
+                height: this._h, 
+                drawFn: createMountainsLayer(this._w, this._h) 
+            }),
+            timeDrift: 0
+        });
+        
+        // Layer 6 - Ground
+        this.layers.push({ 
+            layer: new ParallaxLayer({ 
+                speedMultiplier: 0.2, 
+                width: this._w, 
+                height: this._h, 
+                drawFn: createGroundLayer(this._w, this._h) 
+            }),
+            timeDrift: 0
+        });
+        
+        // Layer 7 - Glow
+        this.layers.push({ 
+            layer: new ParallaxLayer({ 
+                speedMultiplier: 0, 
+                width: this._w, 
+                height: this._h, 
+                drawFn: createGlowLayer(this._w, this._h) 
+            }),
+            timeDrift: 0
+        });
     }
 
-    /**
-     * addLayer() — register a new parallax layer.
-     * @param {object} config — passed directly to ParallaxLayer constructor.
-     */
-    addLayer(config) {
-        this.layers.push(new ParallaxLayer(config));
-    }
-
-    /**
-     * update() — update all layers with current camera position.
-     * @param {number} cameraX
-     */
     update(cameraX) {
-        for (const layer of this.layers) {
-            layer.update(cameraX);
+        this._time += 1;
+        
+        for (const layerObj of this.layers) {
+            const timeOffset = this._time * layerObj.timeDrift;
+            layerObj.layer.update(cameraX, timeOffset);
         }
     }
 
-    /**
-     * draw() — render all layers back-to-front.
-     * @param {CanvasRenderingContext2D} ctx
-     */
     draw(ctx) {
-        // ctx here is in SCREEN space (no camera transform applied yet)
-        // because parallax layers do their own offset calculation and
-        // should NOT be double-shifted by the camera transform.
-        for (const layer of this.layers) {
-            layer.draw(ctx);
+        for (const layerObj of this.layers) {
+            layerObj.layer.draw(ctx);
         }
     }
 }

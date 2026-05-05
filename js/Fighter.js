@@ -1,10 +1,10 @@
 import Sprite from './Sprite.js'
 const canvas = document.querySelector('canvas');
 
-// Canvas' dimension.
+// Fixed canvas dimensions for reliable loading
 canvas.width = 1024;
 canvas.height = 576;
-const gravity = 1;
+const gravity = 0.8;
 
 class Fighter extends Sprite {
     constructor({ name, position, offset, imageSrc, scale, maxFrames, holdFrames, offsetFrame = { x: 0, y: 0 }, sprites, keys, attackTime }) {
@@ -136,6 +136,20 @@ class Fighter extends Sprite {
         }
     }
 
+    // Override draw() to visually scale the fighter 1.15x centered on position.
+    // Only rendering is affected — hitboxes, position, and velocity are unchanged.
+    draw() {
+        const ctx = document.querySelector('canvas').getContext('2d');
+        const cx  = this.position.x;
+        const cy  = this.position.y;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.scale(1.15, 1.15);
+        ctx.translate(-cx, -cy);
+        super.draw();
+        ctx.restore();
+    }
+
     switchSprite(sprite) {
         switch (sprite) {
             case 'idle':
@@ -200,7 +214,7 @@ class Fighter extends Sprite {
 export const player = new Fighter({
     name: "player",
     position: {
-        x: 0,
+        x: 100,
         y: 0
     },
     offset: {
@@ -264,7 +278,7 @@ export const player = new Fighter({
 export const enemy = new Fighter({
     name: "enemy",
     position: {
-        x: 950,
+        x: 900,
         y: 0
     },
     offset: {

@@ -39,9 +39,9 @@ import { EffectsManager }                    from './EffectsManager.js';
 const canvas = document.querySelector('canvas');
 const c      = canvas.getContext('2d');
 
-// Canvas dimensions are set in Fighter.js (1024×576) so we just read them.
-const W = canvas.width;   // 1024
-const H = canvas.height;  // 576
+// Fixed dimensions (set in Fighter.js)
+const W = 1024;
+const H = 576;
 
 // ─── Game State ───────────────────────────────────────────────────────────────
 
@@ -64,7 +64,7 @@ const camera = new Camera({
 });
 
 // Parallax background — replaces the static background sprite entirely.
-const parallax = new ParallaxSystem(W, H);
+const parallax = new ParallaxSystem();
 
 // Particle engine — single shared pool for all emitters.
 const particles = new ParticleSystem();
@@ -108,8 +108,9 @@ loadkeyUpEvents(player, enemy);
 let _dustTimer  = 0;
 let _emberTimer = 0;
 
-const DUST_INTERVAL  = 0.055;  // Spawn a dust mote every ~55ms  (≈18/sec)
-const EMBER_INTERVAL = 0.28;   // Spawn an ember every ~280ms    (≈3.5/sec)
+// Much slower spawn intervals for performance
+const DUST_INTERVAL  = 0.18;   // Spawn dust every ~180ms  (≈5/sec)
+const EMBER_INTERVAL = 0.6;    // Spawn ember every ~600ms   (≈1.5/sec)
 
 function updateAmbientParticles(dt) {
     _dustTimer  += dt;
@@ -140,18 +141,19 @@ function getCameraTarget() {
 }
 
 // ─── Cinematic Letterbox ──────────────────────────────────────────────────────
-
-const LETTERBOX_H = 38; // Height of each letterbox bar in pixels.
+// Minimal letterbox for fullscreen - just thin bars
+// Use dynamic calculation since W/H and scale may change
+const LETTERBOX_H = 8; 
 
 /**
- * drawLetterbox() — draw top and bottom black bars for a cinematic 2.35:1 feel.
- * Called LAST so it's always on top of everything including HUD.
+ * drawLetterbox() — subtle cinematic bars for fullscreen.
+ * Called LAST so it's always on top of everything.
  */
 function drawLetterbox() {
     c.save();
-    c.fillStyle = '#000000';
-    c.fillRect(0,          0, W, LETTERBOX_H);  // Top bar
-    c.fillRect(0, H - LETTERBOX_H, W, LETTERBOX_H);  // Bottom bar
+    c.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    c.fillRect(0, 0, W, LETTERBOX_H);
+    c.fillRect(0, H - LETTERBOX_H, W, LETTERBOX_H);
     c.restore();
 }
 
@@ -159,97 +161,102 @@ function drawLetterbox() {
 
 /**
  * drawHUD() — render health bars and timer in screen space (no shake).
- * Drawn between resetTransform() and drawLetterbox() so bars are always
- * visible but letterbox sits on top of clipped areas.
+ * Simple centered layout for fullscreen.
  */
 function drawHUD() {
     const barW = 280;
     const barH = 14;
-    const barY = LETTERBOX_H + 14;
+    const barY = 20;
     const margin = 20;
 
     // ── Player 1 health bar (left side) ──────────────────────────────────────
     const p1BarX = margin;
 
     // Background track
-    c.fillStyle = 'rgba(0,0,0,0.6)';
+    c.fillStyle = 'rgba(0,0,0,0.3)';
     _roundRect(c, p1BarX - 2, barY - 2, barW + 4, barH + 4, 4);
     c.fill();
+    c.strokeStyle = 'rgba(255,255,255,0.6)';
+    c.lineWidth = 1;
+    _roundRect(c, p1BarX - 2, barY - 2, barW + 4, barH + 4, 4);
+    c.stroke();
 
-    // Empty health (dark red)
-    c.fillStyle = '#4a0a0a';
+    // Empty health
+    c.fillStyle = 'rgba(80,40,40,0.7)';
     _roundRect(c, p1BarX, barY, barW, barH, 3);
     c.fill();
 
-    // Remaining health — gradient purple→pink
+    // Remaining health
     const p1Health = Math.max(0, (player.health / 100) * barW);
     if (p1Health > 0) {
         const grad1 = c.createLinearGradient(p1BarX, barY, p1BarX + barW, barY);
-        grad1.addColorStop(0, '#8B5CF6');
-        grad1.addColorStop(1, '#c084fc');
+        grad1.addColorStop(0, '#FF6B35');
+        grad1.addColorStop(1, '#FF4500');
         c.fillStyle = grad1;
-        _roundRect(c, p1BarX, barY, p1Health, barH, 3);
-        c.fill();
-
-        // Sheen highlight on top half
-        const sheen1 = c.createLinearGradient(p1BarX, barY, p1BarX, barY + barH);
-        sheen1.addColorStop(0,   'rgba(255,255,255,0.22)');
-        sheen1.addColorStop(0.5, 'rgba(255,255,255,0)');
-        c.fillStyle = sheen1;
         _roundRect(c, p1BarX, barY, p1Health, barH, 3);
         c.fill();
     }
 
-    // Player label
-    c.fillStyle = '#e2d4ff';
+    // Player 1 label
+    c.shadowColor = 'rgba(0,0,0,0.4)';
+    c.shadowBlur  = 3;
+    c.fillStyle = '#FFFFFF';
     c.font = "bold 11px 'silver', Arial, sans-serif";
     c.textAlign = 'left';
     c.fillText('P1', p1BarX, barY - 4);
+    c.shadowBlur = 0;
 
-    // ── Player 2 health bar (right side, flipped) ─────────────────────────────
+    // ── Player 2 health bar (right side) ─────────────────────────────────────
     const p2BarX = W - margin - barW;
 
-    c.fillStyle = 'rgba(0,0,0,0.6)';
+    c.fillStyle = 'rgba(0,0,0,0.3)';
     _roundRect(c, p2BarX - 2, barY - 2, barW + 4, barH + 4, 4);
     c.fill();
+    c.strokeStyle = 'rgba(255,255,255,0.6)';
+    c.lineWidth = 1;
+    _roundRect(c, p2BarX - 2, barY - 2, barW + 4, barH + 4, 4);
+    c.stroke();
 
-    c.fillStyle = '#4a0a0a';
+    c.fillStyle = 'rgba(80,40,40,0.7)';
     _roundRect(c, p2BarX, barY, barW, barH, 3);
     c.fill();
 
     const p2Health = Math.max(0, (enemy.health / 100) * barW);
     if (p2Health > 0) {
-        // Draw from the RIGHT side so enemy bar depletes left
         const p2StartX = p2BarX + (barW - p2Health);
         const grad2 = c.createLinearGradient(p2StartX, barY, p2StartX + p2Health, barY);
-        grad2.addColorStop(0, '#c084fc');
-        grad2.addColorStop(1, '#8B5CF6');
+        grad2.addColorStop(0, '#4FC3F7');
+        grad2.addColorStop(1, '#0288D1');
         c.fillStyle = grad2;
-        _roundRect(c, p2StartX, barY, p2Health, barH, 3);
-        c.fill();
-
-        const sheen2 = c.createLinearGradient(p2StartX, barY, p2StartX, barY + barH);
-        sheen2.addColorStop(0,   'rgba(255,255,255,0.22)');
-        sheen2.addColorStop(0.5, 'rgba(255,255,255,0)');
-        c.fillStyle = sheen2;
         _roundRect(c, p2StartX, barY, p2Health, barH, 3);
         c.fill();
     }
 
     // Player 2 label
-    c.fillStyle = '#e2d4ff';
+    c.shadowColor = 'rgba(0,0,0,0.4)';
+    c.shadowBlur  = 3;
+    c.fillStyle = '#FFFFFF';
     c.font = "bold 11px 'silver', Arial, sans-serif";
     c.textAlign = 'right';
     c.fillText('P2', p2BarX + barW, barY - 4);
+    c.shadowBlur = 0;
 
     // ── Timer ─────────────────────────────────────────────────────────────────
     const timerStr = timer.toString();
+    const timerX   = W / 2;
+    const timerY   = barY + barH + 10;
+
+    // Timer background
+    c.fillStyle = 'rgba(255,255,255,0.30)';
+    _roundRect(c, timerX - 24, timerY - 28, 48, 34, 8);
+    c.fill();
+
     c.textAlign   = 'center';
-    c.font        = "bold 32px 'silver', Arial, sans-serif";
-    c.shadowColor = 'rgba(120,60,220,0.7)';
-    c.shadowBlur  = 10;
-    c.fillStyle   = timer <= 10 ? '#ff6060' : '#f0e0ff'; // Red when low
-    c.fillText(timerStr, W / 2, barY + barH + 10);
+    c.font        = "bold 28px 'silver', Arial, sans-serif";
+    c.shadowColor = 'rgba(0,0,0,0.5)';
+    c.shadowBlur  = 4;
+    c.fillStyle   = timer <= 10 ? '#CC2200' : '#1A1A2E';
+    c.fillText(timerStr, timerX, timerY);
     c.shadowBlur  = 0;
 }
 
@@ -445,23 +452,17 @@ function animate(timestamp) {
 }
 
 /**
- * _drawArenaFloor() — subtle glowing ground line for arena feel.
+ * _drawArenaFloor() — arena floor glow line.
  * Drawn in world space so it shakes with the camera on impact.
  */
 function _drawArenaFloor(ctx) {
-    const groundY = H - 95; // Matches the ground collision in Fighter.js
-    const grad = ctx.createLinearGradient(0, groundY, W, groundY);
-    grad.addColorStop(0,    'rgba(100, 50, 200, 0)');
-    grad.addColorStop(0.2,  'rgba(140, 70, 230, 0.35)');
-    grad.addColorStop(0.5,  'rgba(160, 90, 255, 0.5)');
-    grad.addColorStop(0.8,  'rgba(140, 70, 230, 0.35)');
-    grad.addColorStop(1,    'rgba(100, 50, 200, 0)');
-
+    const groundY = window.innerHeight - 100;
     ctx.save();
-    ctx.strokeStyle = grad;
-    ctx.lineWidth   = 2;
-    ctx.shadowColor = 'rgba(150, 80, 255, 0.6)';
-    ctx.shadowBlur  = 8;
+    // Warm glow line for dusk theme
+    ctx.strokeStyle = 'rgba(255, 120, 80, 0.6)';
+    ctx.lineWidth = 3;
+    ctx.shadowColor = 'rgba(255, 100, 60, 0.8)';
+    ctx.shadowBlur = 15;
     ctx.beginPath();
     ctx.moveTo(0, groundY);
     ctx.lineTo(W, groundY);
