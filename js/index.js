@@ -45,9 +45,45 @@ const H = 576;
 
 // ─── Game State ───────────────────────────────────────────────────────────────
 
-let timer     = 30;     // Game timer (seconds).
-let timerID;            // clearTimeout handle.
-let gameEnded = false;  // Prevent multiple winner announcements.
+let timer       = 30;     // Game timer (seconds).
+let timerID;              // clearTimeout handle.
+let gameEnded   = false;  // Prevent multiple winner announcements.
+
+// ─── Intro State ──────────────────────────────────────────────────────────────
+
+/**
+ * gameStarted — false while the cinematic intro is playing.
+ * Keys.js imports isGameStarted() so it can gate input without a circular dep.
+ */
+export let gameStarted = false;
+export function isGameStarted() { return gameStarted; }
+
+/**
+ * introState tracks the animated ROUND 1 → FIGHT! sequence.
+ *
+ * phase timeline (all durations in seconds):
+ *   'round1' : fade-in 0.3 s | hold 1.2 s | fade-out 0.3 s  → 1.8 s total
+ *   'fight'  : fade-in 0.2 s | hold 0.8 s | fade-out 0.2 s  → 1.2 s total
+ *   'done'   : sets gameStarted = true and idles.
+ */
+const introState = {
+    phase:     'round1', // 'round1' | 'fight' | 'done'
+    elapsed:   0,        // seconds spent in the current phase
+    alpha:     0,        // current draw opacity  0 → 1 → 0
+    scale:     0.5,      // current draw scale    0.5 → 1.1 → 1.0
+    shakeX:    0,        // horizontal shake offset (FIGHT! only)
+    shakeY:    0,        // vertical   shake offset (FIGHT! only)
+};
+
+// Timing constants (seconds) — easy to tweak in one place.
+const INTRO = {
+    round1FadeIn:  0.3,
+    round1Hold:    2.4,   // Total ROUND 1: 0.3 + 2.4 + 0.3 = 3.0s
+    round1FadeOut: 0.3,
+    fightFadeIn:   0.2,
+    fightHold:     0.8,   // Total FIGHT: 0.2 + 0.8 + 0.2 = 1.2s
+    fightFadeOut:  0.2,
+};
 
 // ─── Subsystem Initialisation ─────────────────────────────────────────────────
 
@@ -154,6 +190,139 @@ function drawLetterbox() {
     c.fillStyle = 'rgba(0, 0, 0, 0.3)';
     c.fillRect(0, 0, W, LETTERBOX_H);
     c.fillRect(0, H - LETTERBOX_H, W, LETTERBOX_H);
+    c.restore();
+}
+
+// ─── Cinematic Intro ──────────────────────────────────────────────────────────
+
+/**
+ * drawIntro(dt) — advance introState by dt seconds and draw the current frame.
+ *
+ * Called every frame while gameStarted === false.
+ * Sets gameStarted = true (and kicks off the countdown + bot) when the
+ * 'fight' phase finishes fading out.
+ */
+function drawIntro(dt) {
+    const s = introState;
+    s.elapsed += dt;
+
+    if (s.phase === 'round1') {
+        const totalDur = INTRO.round1FadeIn + INTRO.round1Hold + INTRO.round1FadeOut;
+
+        // ── Alpha ──────────────────────────────────────────────────────────────
+        if (s.elapsed < INTRO.round1FadeIn) {
+            s.alpha = s.elapsed / INTRO.round1FadeIn;
+        } else if (s.elapsed < INTRO.round1FadeIn + INTRO.round1Hold) {
+            s.alpha = 1;
+        } else {
+            const fadeElapsed = s.elapsed - INTRO.round1FadeIn - INTRO.round1Hold;
+            s.alpha = 1 - Math.min(fadeElapsed / INTRO.round1FadeOut, 1);
+        }
+
+        // ── Scale pop: 0.5 → 1.1 → 1.0 over the fade-in window ───────────────
+        if (s.elapsed < INTRO.round1FadeIn) {
+            const t = s.elapsed / INTRO.round1FadeIn;          // 0 → 1
+            // overshoot to 1.1 at t=0.7, settle to 1.0 at t=1.0
+            s.scale = 0.5 + 0.6 * t + 0.1 * Math.sin(t * Math.PI);
+        } else {
+            s.scale = 1.0;
+        }
+
+        // ── Phase transition ───────────────────────────────────────────────────
+        if (s.elapsed >= totalDur) {
+            s.phase   = 'fight';
+            s.elapsed = 0;
+            s.alpha   = 0;
+            s.scale   = 0.5;
+            s.shakeX  = 0;
+            s.shakeY  = 0;
+        }
+
+        _drawIntroText('ROUND 1', s.alpha, s.scale, 0, 0);
+
+    } else if (s.phase === 'fight') {
+        const totalDur = INTRO.fightFadeIn + INTRO.fightHold + INTRO.fightFadeOut;
+
+        // ── Alpha ──────────────────────────────────────────────────────────────
+        if (s.elapsed < INTRO.fightFadeIn) {
+            s.alpha = s.elapsed / INTRO.fightFadeIn;
+        } else if (s.elapsed < INTRO.fightFadeIn + INTRO.fightHold) {
+            s.alpha = 1;
+        } else {
+            const fadeElapsed = s.elapsed - INTRO.fightFadeIn - INTRO.fightHold;
+            s.alpha = 1 - Math.min(fadeElapsed / INTRO.fightFadeOut, 1);
+        }
+
+        // ── Scale pop (faster) ─────────────────────────────────────────────────
+        if (s.elapsed < INTRO.fightFadeIn) {
+            const t = s.elapsed / INTRO.fightFadeIn;
+            s.scale = 0.5 + 0.6 * t + 0.15 * Math.sin(t * Math.PI);
+        } else {
+            s.scale = 1.0;
+        }
+
+        // ── Shake during the hold window ───────────────────────────────────────
+        const inHold = s.elapsed >= INTRO.fightFadeIn &&
+                       s.elapsed < INTRO.fightFadeIn + INTRO.fightHold;
+        if (inHold) {
+            const intensity = 4 * (1 - (s.elapsed - INTRO.fightFadeIn) / INTRO.fightHold);
+            s.shakeX = (Math.random() * 2 - 1) * intensity;
+            s.shakeY = (Math.random() * 2 - 1) * intensity;
+        } else {
+            s.shakeX = 0;
+            s.shakeY = 0;
+        }
+
+        // ── Phase transition → done ────────────────────────────────────────────
+        if (s.elapsed >= totalDur) {
+            s.phase     = 'done';
+            gameStarted = true;          // ← unlock input & gameplay
+            decreaseTimer();             // start the countdown
+            intervalBot();               // start the bot AI
+        }
+
+        _drawIntroText('FIGHT!', s.alpha, s.scale, s.shakeX, s.shakeY);
+    }
+    // phase === 'done': nothing to draw; gameStarted flag handles the rest
+}
+
+/**
+ * _drawIntroText() — low-level canvas draw for the intro text.
+ * Separate so drawIntro() stays readable.
+ */
+function _drawIntroText(text, alpha, scale, shakeX, shakeY) {
+    if (alpha <= 0) return;
+
+    c.save();
+    c.globalAlpha = Math.max(0, Math.min(1, alpha));
+
+    // Centre + scale transform
+    c.translate(W / 2 + shakeX, H / 2 + shakeY);
+    c.scale(scale, scale);
+
+    const fontSize = 96;
+    c.font      = `bold ${fontSize}px 'Impact', 'Arial Black', sans-serif`;
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+
+    // ── Outer glow ────────────────────────────────────────────────────────────
+    c.shadowColor = 'rgba(255, 220, 50, 0.95)';
+    c.shadowBlur  = 40;
+    c.fillStyle   = '#FFD700';
+    c.fillText(text, 0, 0);
+
+    // ── Second pass: brighter inner glow ──────────────────────────────────────
+    c.shadowColor = 'rgba(255, 255, 255, 0.9)';
+    c.shadowBlur  = 16;
+    c.fillStyle   = '#FFFFFF';
+    c.fillText(text, 0, 0);
+
+    // ── Stroke for crispness ──────────────────────────────────────────────────
+    c.shadowBlur   = 0;
+    c.strokeStyle  = 'rgba(180, 100, 0, 0.85)';
+    c.lineWidth    = 3;
+    c.strokeText(text, 0, 0);
+
     c.restore();
 }
 
@@ -375,11 +544,9 @@ function animate(timestamp) {
     window.requestAnimationFrame(animate);
 
     // ── 1. DeltaTime ──────────────────────────────────────────────────────────
-    // On the very first frame, initialise _lastTime and skip the update
-    // so we don't get a huge dt equal to the page's uptime.
+    // On the very first frame, initialise _lastTime but keep running normally.
     if (_lastTime < 0) {
         _lastTime = timestamp;
-        return;
     }
     // Cap at 100ms to avoid huge jumps after tab-switch / focus loss.
     const dt = Math.min((timestamp - _lastTime) / 1000, 0.1);
@@ -394,14 +561,22 @@ function animate(timestamp) {
     effects.update(dt);
 
     // Fighter movement (reset x vel each frame — existing behaviour preserved)
+    // Velocity is always zeroed so physics/gravity still works during intro.
     player.velocity.x = 0;
     enemy.velocity.x  = 0;
 
-    if (!player.movement() && !player.isAttacking && !player.isTakingHit) {
-        player.switchSprite('idle');
-    }
-    if (!enemy.movement() && !enemy.isAttacking && !enemy.isTakingHit) {
-        enemy.switchSprite('idle');
+    // Only process movement & idle-sprite logic when gameplay is live.
+    if (gameStarted) {
+        if (!player.movement() && !player.isAttacking && !player.isTakingHit) {
+            player.switchSprite('idle');
+        }
+        if (!enemy.movement() && !enemy.isAttacking && !enemy.isTakingHit) {
+            enemy.switchSprite('idle');
+        }
+    } else {
+        // During intro: force idle sprites so fighters stand still.
+        if (!player.isAttacking && !player.isTakingHit) player.switchSprite('idle');
+        if (!enemy.isAttacking  && !enemy.isTakingHit)  enemy.switchSprite('idle');
     }
 
     // ── 3. Clear Canvas ───────────────────────────────────────────────────────
@@ -439,14 +614,22 @@ function animate(timestamp) {
     // ── 12. Letterbox (always on top) ─────────────────────────────────────────
     drawLetterbox();
 
+    // ── Intro overlay (drawn in screen space, after all world rendering) ──────
+    if (!gameStarted) {
+        drawIntro(dt);
+    }
+
     // ── Attack / Hit detection ────────────────────────────────────────────────
     // Kept at end of frame (same position as original code) so callbacks
     // fired in attack() write to effects arrays that will be drawn next frame.
-    player.attack(enemy);
-    enemy.attack(player);
+    // Gated on gameStarted so no hits register during the cinematic.
+    if (gameStarted) {
+        player.attack(enemy);
+        enemy.attack(player);
+    }
 
     // ── Win condition ─────────────────────────────────────────────────────────
-    if (!gameEnded && (enemy.health <= 0 || player.health <= 0)) {
+    if (gameStarted && !gameEnded && (enemy.health <= 0 || player.health <= 0)) {
         determineWinner({ player, enemy, timerID });
     }
 }
@@ -456,7 +639,7 @@ function animate(timestamp) {
  * Drawn in world space so it shakes with the camera on impact.
  */
 function _drawArenaFloor(ctx) {
-    const groundY = window.innerHeight - 100;
+    const groundY = H - 100;
     ctx.save();
     // Warm glow line for dusk theme
     ctx.strokeStyle = 'rgba(255, 120, 80, 0.6)';
@@ -471,10 +654,8 @@ function _drawArenaFloor(ctx) {
 }
 
 // ─── Game Start ───────────────────────────────────────────────────────────────
+// intervalBot() and decreaseTimer() are now called by drawIntro() once the
+// 'fight' phase finishes — this keeps the countdown and bot silent during
+// the cinematic.  Only the RAF loop starts immediately.
 
-intervalBot();
-
-setTimeout(() => {
-    animate(0);         // Kick off the loop
-    decreaseTimer();    // Start countdown
-}, 1000);
+window.requestAnimationFrame(animate);

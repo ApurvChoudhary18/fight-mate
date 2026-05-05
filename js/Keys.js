@@ -1,3 +1,5 @@
+import { isGameStarted } from './index.js';
+
 export const keys = {
     // Player.
     a: {
@@ -25,6 +27,10 @@ export function loadKeyDownEvents(player, enemy) {
     // Whenever a key is pressed.
     window.addEventListener('keydown', (event) => {
         event.preventDefault(); // Prevent any keys' default behaviour i.e using the arrow keys to navigate the page.
+
+        // Block all gameplay input during the cinematic intro.
+        if (!isGameStarted()) return;
+
         switch (event.key) {
             // Player keys.
             case 'd':
@@ -71,6 +77,7 @@ export function loadKeyDownEvents(player, enemy) {
 export function loadkeyUpEvents(player, enemy) {
     // Whenever a key is lifted.
     window.addEventListener('keyup', (event) => {
+        // Always process keyup so keys don't get stuck if pressed during intro.
         switch (event.key) {
             // Player.
             case 'd':
